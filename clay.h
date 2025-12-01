@@ -2228,10 +2228,19 @@ void Clay__InitializePersistentMemory(Clay_Context* context) {
     context->scrollContainerDatas = Clay__ScrollContainerDataInternalArray_Allocate_Arena(100, arena);
     context->layoutElementsHashMapInternal = Clay__LayoutElementHashMapItemArray_Allocate_Arena(maxElementCount, arena);
     context->layoutElementsHashMap = Clay__int32_tArray_Allocate_Arena(maxElementCount, arena);
+    // Must check that array is non-null as this is also used with "fakeContext" for calculating minimum memory requirements
+    for (int32_t i = 0; context->layoutElementsHashMap.internalArray && i < context->layoutElementsHashMap.capacity; ++i) {
+        context->layoutElementsHashMap.internalArray[i] = -1;
+    }
     context->measureTextHashMapInternal = Clay__MeasureTextCacheItemArray_Allocate_Arena(maxElementCount, arena);
+    context->measureTextHashMapInternal.length = 1; // Reserve the 0 value to mean "no next element"
     context->measureTextHashMapInternalFreeList = Clay__int32_tArray_Allocate_Arena(maxElementCount, arena);
     context->measuredWordsFreeList = Clay__int32_tArray_Allocate_Arena(maxMeasureTextCacheWordCount, arena);
     context->measureTextHashMap = Clay__int32_tArray_Allocate_Arena(maxElementCount, arena);
+    // Must check that array is non-null as this is also used with "fakeContext" for calculating minimum memory requirements
+    for (int32_t i = 0; context->measureTextHashMap.internalArray && i < context->measureTextHashMap.capacity; ++i) {
+        context->measureTextHashMap.internalArray[i] = 0;
+    }
     context->measuredWords = Clay__MeasuredWordArray_Allocate_Arena(maxMeasureTextCacheWordCount, arena);
     context->pointerOverIds = Clay_ElementIdArray_Allocate_Arena(maxElementCount, arena);
     context->debugElementData = Clay__DebugElementDataArray_Allocate_Arena(maxElementCount, arena);
@@ -3878,7 +3887,9 @@ void* Clay__Array_Allocate_Arena(int32_t capacity, uint32_t itemSize, Clay_Arena
     uintptr_t nextAllocOffset = arena->nextAllocation + ((64 - (arena->nextAllocation % 64)) & 63);
     if (nextAllocOffset + totalSizeBytes <= arena->capacity) {
         arena->nextAllocation = nextAllocOffset + totalSizeBytes;
-        return (void*)((uintptr_t)arena->memory + (uintptr_t)nextAllocOffset);
+        // When memory addresses are going to be invalid it is better to keep them as NULL
+	// Protect against case where arena.capacity is set but arena.memory is NULL; e.g. while calculating minimum memory required
+        return arena->memory ? (void*)((uintptr_t)arena->memory + (uintptr_t)nextAllocOffset) : arena->memory;
     }
     else {
         Clay__currentContext->errorHandler.errorHandlerFunction(CLAY__INIT(Clay_ErrorData) {
@@ -4057,13 +4068,6 @@ Clay_Context* Clay_Initialize(Clay_Arena arena, Clay_Dimensions layoutDimensions
     Clay_SetCurrentContext(context);
     Clay__InitializePersistentMemory(context);
     Clay__InitializeEphemeralMemory(context);
-    for (int32_t i = 0; i < context->layoutElementsHashMap.capacity; ++i) {
-        context->layoutElementsHashMap.internalArray[i] = -1;
-    }
-    for (int32_t i = 0; i < context->measureTextHashMap.capacity; ++i) {
-        context->measureTextHashMap.internalArray[i] = 0;
-    }
-    context->measureTextHashMapInternal.length = 1; // Reserve the 0 value to mean "no next element"
     context->layoutDimensions = layoutDimensions;
     return context;
 }
